@@ -9,8 +9,8 @@ This repository contains an automated pipeline designed to connect to multiple R
   - Sharpness (Laplacian Variance)
   - Brightness (Overexposure & Underexposure thresholds)
   - Noise/Low Detail (Canny Edge Density)
-- **YOLO Person Detection**: Uses Ultralytics YOLOv8 to detect people in clear frames.
-- **Deep Learning Reference Matching**: Employs a pre-trained PyTorch `ResNet18` model to extract visual features from detected people (center-cropped to ignore background noise) and matches them against `reference_data` using Cosine Similarity.
+- **YOLO Person Detection**: Uses the highly accurate Ultralytics `yolov8s.pt` (Small) model with a lowered confidence threshold (0.25) to ensure it successfully detects faraway or partially blocked people in the CCTV frames.
+- **Deep Learning Reference Matching**: Employs a pre-trained PyTorch `ResNet18` model to extract deep visual features from detected people. It smartly crops the inner 80% of the person to ignore background noise, and uses Cosine Similarity (0.75 threshold) to match their clothing against your `reference_data`.
 - **Automated Dataset Structuring**: Automatically filters out empty frames (where no person is detected) and splits the remaining annotated images into an exact 70% Train, 20% Val, and 10% Test split inside a YOLO-compatible `training_dataset/` directory. It also dynamically generates a precise `data.yaml` configuration using dictionary-mapping to safely skip unused class IDs.
 
 ## Setup & Installation
@@ -21,6 +21,7 @@ This repository contains an automated pipeline designed to connect to multiple R
    source env/bin/activate
    ```
 2. **Install Dependencies**:
+   *(Make sure to run this to install PyTorch, Torchvision, OpenCV, and Ultralytics)*
    ```bash
    pip3 install -r requirements.txt
    ```

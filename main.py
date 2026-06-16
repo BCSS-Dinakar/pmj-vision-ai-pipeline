@@ -1,3 +1,17 @@
+"""
+VISION AI PIPELINE SCRIPT
+=========================
+This script is an automated tool that connects to security cameras and builds a dataset for AI training.
+
+Here is exactly what it does, step by step:
+1. It reads a list of camera links from 'cameras.json'.
+2. It connects to these cameras and takes screenshots (frames).
+3. Quality Check: It automatically throws away any blurry, too dark, or too bright images.
+4. AI Person Detection: It uses a smart AI called 'YOLO' to find where the people are in the good images.
+5. AI Clothing Matcher: It cuts out the picture of each person and uses another AI (ResNet) to look at their clothes. It compares their clothes to the reference pictures you provided to figure out what section they belong to (like 'sec1', 'sec2', or 'customers').
+6. Saving Labels: It draws a box around the person, tags them with the correct section name, and saves this information.
+7. Dataset Building: Finally, it takes all the good, perfectly labeled images and automatically splits them into 'train', 'val', and 'test' folders so that you can easily train your own custom YOLO model later!
+"""
 import os
 import cv2
 import json
