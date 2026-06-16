@@ -369,13 +369,13 @@ def process_camera(site_name, camera_id, rtsp_url, return_dict):
 
     # If camera is offline or the link is wrong, log the error and stop
     if not cap.isOpened():
-        print(f"[ERROR] {camera_id}")
+        print(f"\n  ❌  CAMERA OFFLINE  |  {camera_id}  — Cannot connect. Check RTSP link or network.")
         stats = return_dict[camera_id]
         stats["error"] = "Connection failed (Camera offline or unreachable)"
         return_dict[camera_id] = stats
         return
 
-    print(f"[STARTED] {camera_id}")
+    print(f"\n  📷  CAMERA CONNECTED  |  {camera_id}  — Starting capture...")
     count = 0   # Counts how many frames have been processed (both clear and blur)
 
     # Keep looping until we've processed MAX_IMAGES frames
@@ -383,7 +383,7 @@ def process_camera(site_name, camera_id, rtsp_url, return_dict):
         ret, frame = cap.read()   # Read the next frame from the camera
         if not ret:
             # Frame failed to read — camera may have dropped. Wait and retry.
-            print(f"[RECONNECT] {camera_id}")
+            print(f"  🔄  RECONNECTING  |  {camera_id}  — Frame read failed. Retrying in 5s...")
             time.sleep(5)
             continue
 
@@ -440,8 +440,8 @@ def process_camera(site_name, camera_id, rtsp_url, return_dict):
         count += 1
 
         # Print a one-line status update to the terminal for this frame
-        score_str = f"Blr:{score_dict['blur_score']:.1f} Brt:{score_dict['brightness']:.1f} Edg:{score_dict['edge_density']:.1f}"
-        print(f"[{status}] {camera_id} {score_str} {count}/{MAX_IMAGES}")
+        icon = "✅" if status == "CLEAR" else "🚫"
+        print(f"  {icon}  {status:<5}  |  {camera_id}  [{count:>2}/{MAX_IMAGES}]  |  Sharpness:{score_dict['blur_score']:>8.1f}  Brightness:{score_dict['brightness']:>5.1f}  Detail:{score_dict['edge_density']:>5.1f}")
 
         # Wait before taking the next photo
         time.sleep(FRAME_INTERVAL)
@@ -467,7 +467,9 @@ def create_training_dataset(source_dir="dataset", dest_dir="training_dataset", s
 
     Also automatically generates 'training_dataset/data.yaml' which YOLO needs.
     """
-    print(f"\nCreating final YOLO dataset structure in '{dest_dir}'...")
+    print(f"\n{'='*55}")
+    print(f"  📦  Building Training Dataset in '{dest_dir}'...")
+    print(f"{'='*55}")
 
     # Create the required train/val/test folders inside training_dataset/
     for split in ['train', 'val', 'test']:
@@ -476,7 +478,7 @@ def create_training_dataset(source_dir="dataset", dest_dir="training_dataset", s
 
     # Check that the source dataset folder exists
     if not os.path.exists(source_dir):
-        print(f"Source directory {source_dir} not found.")
+        print(f"  ⚠️  ERROR: Source folder '{source_dir}' not found. Run the camera script first.")
         return
 
     all_images = []   # Will hold tuples of (image_path, label_path, img_name, txt_name)
@@ -509,7 +511,7 @@ def create_training_dataset(source_dir="dataset", dest_dir="training_dataset", s
                     all_images.append((img_path, txt_path, img_name, txt_name))
 
     if not all_images:
-        print("No annotated images found to create training dataset.")
+        print("  ⚠️  WARNING: No annotated images found. Make sure cameras captured people.")
         return
 
     # Shuffle images randomly so the split is not biased by date or camera
@@ -539,8 +541,11 @@ def create_training_dataset(source_dir="dataset", dest_dir="training_dataset", s
     with open(os.path.join(dest_dir, "data.yaml"), "w") as f:
         f.write(yaml_content)
 
-    print(f"Dataset created successfully!")
-    print(f"Train: {train_end} | Val: {val_end - train_end} | Test: {total - val_end}")
+    print(f"  ✅  Dataset ready!")
+    print(f"  🏋️  Train : {train_end} images")
+    print(f"  🔍  Val   : {val_end - train_end} images")
+    print(f"  🧪  Test  : {total - val_end} images")
+    print(f"  📄  data.yaml generated at: {dest_dir}/data.yaml")
 
 
 # ==========================================
@@ -573,40 +578,42 @@ def main():
     try:
         while any(p.is_alive() for p in processes):
             time.sleep(1)
-        print("\n[DONE] All cameras reached MAX_IMAGES and finished.")
+        print("\n" + "="*55)
+        print("  🏁  ALL CAMERAS FINISHED — MAX_IMAGES reached for every camera.")
+        print("="*55)
     except KeyboardInterrupt:
         # If you press Ctrl+C, all cameras are stopped cleanly
-        print("\n[STOP] Terminating cameras...")
+        print("\n  🛑  STOPPED — Cameras terminated by user (Ctrl+C).")
         for p in processes:
             p.terminate()
 
     # Print a summary table showing how each camera performed
-    print("\n" + "="*40)
-    print(" RUN SUMMARY ")
-    print("="*40)
+    print("\n" + "═"*55)
+    print("   📊  RUN SUMMARY")
+    print("═"*55)
 
     total_clear = total_blur = total_anno = total_persons = 0
 
     for cam_id, stats in return_dict.items():
-        print(f"Site: {stats['site_name']} | Camera: {cam_id}")
+        print(f"\n  🏪  {stats['site_name']}  |  📷 {cam_id}")
         if "error" in stats:
-            print(f"  - Status: ERROR ({stats['error']})")
-        print(f"  - Clear images:     {stats['clear']}")
-        print(f"  - Blur images:      {stats['blur']}")
-        print(f"  - Annotated images: {stats['annotated']}")
-        print(f"  - Total persons:    {stats['persons']}")
+            print(f"      ❌  Status   : ERROR — {stats['error']}")
+        print(f"      ✅  Clear    : {stats['clear']} images")
+        print(f"      🚫  Rejected : {stats['blur']} images (blur/dark/overexposed)")
+        print(f"      🏷️  Labeled  : {stats['annotated']} images with annotations")
+        print(f"      👤  Persons  : {stats['persons']} people detected")
 
         total_clear   += stats.get('clear', 0)
         total_blur    += stats.get('blur', 0)
         total_anno    += stats.get('annotated', 0)
         total_persons += stats.get('persons', 0)
 
-    print("-" * 40)
-    print(f"Total Clear Images:     {total_clear}")
-    print(f"Total Blur Images:      {total_blur}")
-    print(f"Total Annotated Images: {total_anno}")
-    print(f"Total Persons Found:    {total_persons}")
-    print("="*40)
+    print("\n" + "─"*55)
+    print(f"  ✅  Total Clear Images   : {total_clear}")
+    print(f"  🚫  Total Rejected       : {total_blur}")
+    print(f"  🏷️  Total Labeled        : {total_anno}")
+    print(f"  👤  Total Persons Found  : {total_persons}")
+    print("═"*55)
 
     # Finally, package all annotated images into the training_dataset/ folder
     create_training_dataset()
