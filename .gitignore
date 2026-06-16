@@ -17,5 +17,4 @@ venv/
 
 # Data folders (too large for git)
 dataset/
-reference_data/
 training_dataset/
