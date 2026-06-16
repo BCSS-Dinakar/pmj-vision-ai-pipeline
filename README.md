@@ -27,11 +27,12 @@ In simple words, here is what happens when you run this script:
 | Feature | What it does |
 |---|---|
 | **Multi-Camera** | All cameras run at the same time using Python multiprocessing |
-| **Quality Filter** | Rejects blurry, too dark, or too bright frames automatically |
-| **Person Detection** | Uses `yolov8s.pt` (Small model) for accurate CCTV-grade detection |
-| **Clothing Matcher** | Uses ResNet18 AI to identify which section a person belongs to |
-| **Auto Labeling** | Draws green boxes + section names on every detected person |
-| **Dataset Builder** | Packages everything into a YOLO-ready training dataset with data.yaml |
+| **Quality Filter** | Rejects blurry, too dark, or too bright frames automatically. Uses 3 metrics: Sharpness, Brightness, Edge Density |
+| **Person Detection** | Uses `yolov8s.pt` (Small model) with confidence `0.25` for accurate CCTV-grade detection — finds faraway and partially visible people |
+| **Clothing Matcher** | Uses ResNet18 AI to identify which section a person belongs to. Checks color, texture, patterns, logos, and shapes — not just color |
+| **Auto Labeling** | Draws green boxes + section names on every detected person and saves YOLO `.txt` label files |
+| **Dataset Builder** | Packages everything into a YOLO-ready training dataset with auto-generated `data.yaml` |
+| **Reference Guide** | See `reference_data_guide.md` for how to set up your sample clothing photos |
 
 ---
 
@@ -43,8 +44,9 @@ Automation-modeltraining/
 ├── main.py              ← Main script. Run this to start everything.
 ├── cameras.json         ← List of all your camera RTSP links
 ├── requirements.txt     ← Python packages to install
-├── README.md            ← This file
+├── README.md            ← This file — project overview
 ├── setup.md             ← Full step-by-step setup guide
+├── reference_data_guide.md ← How to set up your reference clothing photos
 │
 ├── reference_data/      ← YOU FILL THIS — sample clothing photos per section
 │   ├── sec1/
@@ -89,19 +91,13 @@ pip3 install -r requirements.txt
 ```
 
 **Step 3 — Add your reference photos:**
-Put 3–5 clear clothing photos for each section inside `reference_data/`:
+Put **5–10 clear clothing photos** for each section inside `reference_data/`:
 ```
 reference_data/sec1/photo1.jpg
 reference_data/sec2/photo1.jpg
 reference_data/customers/photo1.jpg
 ```
-
-**Step 4 — Run the script:**
-```bash
-python3 main.py
-```
-
-> 📖 See [setup.md](./setup.md) for the full detailed setup guide including camera configuration.
+> 📖 See [reference_data_guide.md](./reference_data_guide.md) for full photo guidelines.
 
 ---
 
@@ -122,17 +118,17 @@ You can change these at the top of `main.py` under `# CONFIGURATION`:
 When running, the terminal will print one line per frame:
 
 ```
-[STARTED] GF-37-CAM-01                           ← Camera connected
-[CLEAR] GF-37-CAM-01 Blr:9800 Brt:108 Edg:55 1/10  ← Good frame saved
-[BLUR] GF-37-CAM-01 Blr:50 Brt:128 Edg:0.3 2/10    ← Frame rejected
-[ERROR] GF-35-CAM-05                              ← Camera offline
-[DONE] All cameras reached MAX_IMAGES            ← All cameras finished
+  📷  CAMERA CONNECTED  |  GF-37-CAM-01  — Starting capture...
+  ✅  CLEAR  |  GF-37-CAM-01  [ 1/10]  |  Sharpness: 9800.1  Brightness: 94.2  Detail: 55.1
+  🚫  BLUR   |  GF-37-CAM-01  [ 2/10]  |  Sharpness:   45.2  Brightness:128.0  Detail:  0.4
+  ❌  CAMERA OFFLINE  |  GF-35-CAM-05  — Cannot connect. Check RTSP link or network.
+  🏁  ALL CAMERAS FINISHED — MAX_IMAGES reached for every camera.
 ```
 
 **Score meaning:**
-- `Blr` → Sharpness score (higher = sharper)
-- `Brt` → Brightness (40–220 is normal)
-- `Edg` → Edge/detail density (above 5 is good)
+- `Sharpness` → How sharp the image is (higher = sharper, below 60 = rejected)
+- `Brightness` → Light level (normal range: 40–220, outside = rejected)
+- `Detail` → How much detail/edges visible (below 5 = rejected as blank frame)
 
 ---
 
@@ -150,7 +146,8 @@ yolo train model=yolov8s.pt data=training_dataset/data.yaml epochs=50 imgsz=640
 
 | Problem | Fix |
 |---|---|
-| `[ERROR] Camera-ID` | Camera offline or wrong RTSP link in `cameras.json` |
-| All frames are `[BLUR]` | Camera stream is initializing. Wait and try again. |
-| `0 Annotated images` | No people visible, or `reference_data/` is empty |
+| `❌ CAMERA OFFLINE` | Camera offline or wrong RTSP link in `cameras.json` |
+| All frames are `🚫 BLUR` | Camera stream is initializing. Wait and try again. |
+| `0 Labeled images` | No people visible, or `reference_data/` is empty |
 | `ModuleNotFoundError` | Run `pip3 install -r requirements.txt` in the `env` |
+| `⚠️ No annotated images found` | Cameras ran but detected no people. Check camera angle. |

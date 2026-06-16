@@ -119,9 +119,12 @@ This is the most important manual step. You need to add sample clothing photos f
 
 **Rules:**
 - Create one folder for each section inside `reference_data/`
-- Put at least **3–5 clear photos** of the uniform for each section
-- Photos should show the clothing clearly — chest area works best
+- Put **5–10 clear photos** of the uniform for each section (minimum 3)
+- Put **10–15 random casual clothing photos** in `customers/`
+- Photos should clearly show the uniform — chest to waist area works best
 - File formats supported: `.jpg`, `.png`, `.jpeg`
+
+> 📖 See [reference_data_guide.md](./reference_data_guide.md) for full guidelines on what photos to take, how many, and tips for best accuracy.
 
 **Example:**
 ```
@@ -164,12 +167,17 @@ Step 10 → After all cameras finish, the training_dataset/ is auto-built
 
 ### Console Output Explained:
 ```
-[STARTED] GF-37-CAM-01          ← Camera connected successfully
-[BLUR] GF-37-CAM-01 Blr:50 ...  ← Image rejected (too blurry)
-[CLEAR] GF-37-CAM-01 Blr:9800   ← Image accepted and processed
-[ERROR] GF-35-CAM-05             ← Camera offline or unreachable
-[DONE] All cameras finished      ← All cameras have collected 10 images
+  📷  CAMERA CONNECTED  |  GF-37-CAM-01  — Starting capture...
+  ✅  CLEAR  |  GF-37-CAM-01  [ 1/10]  |  Sharpness: 9800.1  Brightness: 94.2  Detail: 55.1
+  🚫  BLUR   |  GF-37-CAM-01  [ 2/10]  |  Sharpness:   45.2  Brightness:128.0  Detail:  0.4
+  ❌  CAMERA OFFLINE  |  GF-35-CAM-05  — Cannot connect.
+  🏁  ALL CAMERAS FINISHED — MAX_IMAGES reached for every camera.
 ```
+
+**What the scores mean:**
+- `Sharpness` → How sharp the image is (below 60 = rejected as blurry)
+- `Brightness` → Light level (below 40 = too dark, above 220 = too bright = rejected)
+- `Detail` → How much detail is visible (below 5 = rejected as blank/empty frame)
 
 ---
 
@@ -209,7 +217,8 @@ Every time you run `python3 main.py`:
 
 | Problem | Solution |
 |---|---|
-| `[ERROR] Camera-ID` | Camera is offline or RTSP link is wrong. Check your `cameras.json`. |
-| All images are `[BLUR]` | Camera is not focused or the RTSP stream is initializing. Wait and try again. |
-| `0 Annotated images` | No people visible in camera. Check camera angle or add reference images to `reference_data/`. |
+| `❌ CAMERA OFFLINE` | Camera is offline or RTSP link is wrong. Check your `cameras.json`. |
+| All images are `🚫 BLUR` | Camera is not focused or stream is initializing. Wait and try again. |
+| `0 Labeled images` | No people visible in camera. Check angle or add reference images. |
+| `⚠️ No annotated images found` | Cameras ran but detected no people. Check camera angle or reference_data. |
 | `ModuleNotFoundError` | Run `pip3 install -r requirements.txt` inside the virtual environment. |
