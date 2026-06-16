@@ -365,6 +365,19 @@ def create_training_dataset(source_dir="dataset", dest_dir="training_dataset", s
     copy_split(val_data, 'val')
     copy_split(test_data, 'test')
     
+    # Generate data.yaml automatically
+    names_yaml = "\n".join([f"  {class_id}: {name}" for name, class_id in CLASS_MAPPING.items()])
+        
+    yaml_content = f"""train: images/train
+val: images/val
+test: images/test
+
+names:
+{names_yaml}
+"""
+    with open(os.path.join(dest_dir, "data.yaml"), "w") as f:
+        f.write(yaml_content)
+         
     print(f"Dataset created successfully!")
     print(f"Train: {len(train_data)} | Val: {len(val_data)} | Test: {len(test_data)}")
 
