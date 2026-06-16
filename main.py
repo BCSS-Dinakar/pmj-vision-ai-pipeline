@@ -3,9 +3,14 @@ import os
 import json
 import time
 import multiprocessing
+import shutil
+import random
 from datetime import datetime
 from ultralytics import YOLO
 import numpy as np
+import torch
+import torchvision.transforms as transforms
+from PIL import Image
 
 CLASS_MAPPING = {
     "sec1": 0,
@@ -21,17 +26,54 @@ CLASS_MAPPING = {
 }
 
 class ReferenceMatcher:
-    def __init__(self, ref_dir="reference_data", threshold=0.6):
+    def __init__(self, ref_dir="reference_data", threshold=0.85):
         self.ref_dir = ref_dir
         self.threshold = threshold
-        self.reference_hists = []
+        
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
+        
+        try:
+            from torchvision.models import resnet18, ResNet18_Weights
+            weights = ResNet18_Weights.DEFAULT
+            self.model = resnet18(weights=weights)
+            self.preprocess = weights.transforms()
+        except ImportError:
+            from torchvision.models import resnet18
+            self.model = resnet18(pretrained=True)
+            self.preprocess = transforms.Compose([
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ])
+            
+        self.model.fc = torch.nn.Identity()
+        self.model = self.model.to(self.device)
+        self.model.eval()
+        
+        self.reference_embeddings = []
         self._load_references()
         
-    def _compute_hist(self, image):
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
-        cv2.normalize(hist, hist, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
-        return hist
+    def _compute_embedding(self, image):
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        pil_img = Image.fromarray(image_rgb)
+        
+        # Crop the center 60% of the bounding box to focus on torso and avoid background
+        width, height = pil_img.size
+        left = width * 0.2
+        top = height * 0.2
+        right = width * 0.8
+        bottom = height * 0.8
+        if width > 0 and height > 0:
+            pil_img = pil_img.crop((left, top, right, bottom))
+        
+        input_tensor = self.preprocess(pil_img).unsqueeze(0).to(self.device)
+        
+        with torch.no_grad():
+            embedding = self.model(input_tensor)
+            
+        embedding = torch.nn.functional.normalize(embedding, p=2, dim=1)
+        return embedding
         
     def _load_references(self):
         if not os.path.exists(self.ref_dir):
@@ -48,19 +90,19 @@ class ReferenceMatcher:
                 image_path = os.path.join(folder_path, filename)
                 image = cv2.imread(image_path)
                 if image is not None:
-                    hist = self._compute_hist(image)
-                    self.reference_hists.append((hist, class_id))
+                    emb = self._compute_embedding(image)
+                    self.reference_embeddings.append((emb, class_id))
                     
     def match(self, cropped_img):
-        if not self.reference_hists:
+        if not self.reference_embeddings:
             return CLASS_MAPPING.get("customers", 8)
             
-        crop_hist = self._compute_hist(cropped_img)
-        best_score = -1
+        crop_emb = self._compute_embedding(cropped_img)
+        best_score = -1.0
         best_class = CLASS_MAPPING.get("customers", 8)
         
-        for ref_hist, class_id in self.reference_hists:
-            score = cv2.compareHist(crop_hist, ref_hist, cv2.HISTCMP_CORREL)
+        for ref_emb, class_id in self.reference_embeddings:
+            score = torch.sum(crop_emb * ref_emb).item()
             if score > best_score:
                 best_score = score
                 if score > self.threshold:
@@ -78,11 +120,35 @@ model = YOLO("yolov8n.pt")
 def create_folder(path):
     os.makedirs(path, exist_ok=True)
 
-def is_blur(image, threshold=50):
-    small = cv2.resize(image, (320, 240))
-    gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-    score = cv2.Laplacian(gray, cv2.CV_64F).var()
-    return score, score < threshold
+def is_good_frame(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gray = cv2.resize(gray, (400, 300))
+
+    # 1. Blur score (sharpness)
+    blur_score = cv2.Laplacian(gray, cv2.CV_64F).var()
+
+    # 2. Brightness check
+    brightness = gray.mean()
+
+    # 3. Simple noise check (edge density)
+    edges = cv2.Canny(gray, 50, 150)
+    edge_density = edges.mean()
+
+    # RULES
+    is_blur = blur_score < 60
+    is_dark = brightness < 40
+    is_bright = brightness > 220
+    is_low_detail = edge_density < 5
+
+    is_bad = is_blur or is_dark or is_bright or is_low_detail
+
+    score = {
+        "blur_score": blur_score,
+        "brightness": brightness,
+        "edge_density": edge_density
+    }
+
+    return score, not is_bad
 
 def save_yolo_annotation(results, txt_file, image, matcher, crop_folder=None, base_name=""):
     img_h, img_w = image.shape[:2]
@@ -152,7 +218,8 @@ def process_camera(site_name, camera_id, rtsp_url, return_dict):
         crop_folder = f"{base}/crops"
         for folder in [image_folder, blur_folder, ann_img_folder, ann_txt_folder, crop_folder]:
             create_folder(folder)
-        score, blur = is_blur(frame, BLUR_THRESHOLD)
+        score_dict, is_good = is_good_frame(frame)
+        blur = not is_good
         name = f"{camera_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
         if blur:
             cv2.imwrite(f"{blur_folder}/{name}", frame)
@@ -178,7 +245,8 @@ def process_camera(site_name, camera_id, rtsp_url, return_dict):
             return_dict[camera_id] = stats
             
         count += 1
-        print(f"[{status}] {camera_id} Score:{score:.2f} {count}/{MAX_IMAGES}")
+        score_str = f"Blr:{score_dict['blur_score']:.1f} Brt:{score_dict['brightness']:.1f} Edg:{score_dict['edge_density']:.1f}"
+        print(f"[{status}] {camera_id} {score_str} {count}/{MAX_IMAGES}")
         time.sleep(FRAME_INTERVAL)
     cap.release()
 
@@ -232,6 +300,73 @@ def main():
     print(f"Total Annotated Images: {total_anno}")
     print(f"Total Persons Found:    {total_persons}")
     print("="*40)
+    
+    create_training_dataset()
+
+def create_training_dataset(source_dir="dataset", dest_dir="training_dataset", split_ratios=(0.7, 0.2, 0.1)):
+    print(f"\nCreating final YOLO dataset structure in '{dest_dir}'...")
+    
+    for split in ['train', 'val', 'test']:
+        create_folder(f"{dest_dir}/images/{split}")
+        create_folder(f"{dest_dir}/labels/{split}")
+        
+    all_images = []
+    
+    if not os.path.exists(source_dir):
+        print(f"Source directory {source_dir} not found.")
+        return
+        
+    for date_folder in os.listdir(source_dir):
+        date_path = os.path.join(source_dir, date_folder)
+        if not os.path.isdir(date_path): continue
+            
+        for site_folder in os.listdir(date_path):
+            site_path = os.path.join(date_path, site_folder)
+            if not os.path.isdir(site_path): continue
+                
+            img_dir = os.path.join(site_path, "images")
+            txt_dir = os.path.join(site_path, "annotations", "txt")
+            
+            if not os.path.exists(img_dir) or not os.path.exists(txt_dir):
+                continue
+                
+            for img_name in os.listdir(img_dir):
+                if not img_name.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    continue
+                    
+                txt_name = img_name.rsplit('.', 1)[0] + ".txt"
+                img_path = os.path.join(img_dir, img_name)
+                txt_path = os.path.join(txt_dir, txt_name)
+                
+                if os.path.exists(txt_path) and os.path.getsize(txt_path) > 0:
+                    all_images.append((img_path, txt_path, img_name, txt_name))
+                    
+    if not all_images:
+        print("No annotated images found to create training dataset.")
+        return
+        
+    random.seed(42)
+    random.shuffle(all_images)
+    
+    total = len(all_images)
+    train_end = int(total * split_ratios[0])
+    val_end = train_end + int(total * split_ratios[1])
+    
+    train_data = all_images[:train_end]
+    val_data = all_images[train_end:val_end]
+    test_data = all_images[val_end:]
+    
+    def copy_split(data, split_name):
+        for img_path, txt_path, img_name, txt_name in data:
+            shutil.copy(img_path, os.path.join(dest_dir, "images", split_name, img_name))
+            shutil.copy(txt_path, os.path.join(dest_dir, "labels", split_name, txt_name))
+            
+    copy_split(train_data, 'train')
+    copy_split(val_data, 'val')
+    copy_split(test_data, 'test')
+    
+    print(f"Dataset created successfully!")
+    print(f"Train: {len(train_data)} | Val: {len(val_data)} | Test: {len(test_data)}")
 
 if __name__ == "__main__":
     main()
