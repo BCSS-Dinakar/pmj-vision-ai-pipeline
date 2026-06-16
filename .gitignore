@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+env/
+venv/
+.env
+
+# macOS
+.DS_Store
+
+# YOLO models
+*.pt
+*.onnx
+
+# Data folders (too large for git)
+dataset/
+cropped_images/
+reference_data/

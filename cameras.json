@@ -1,0 +1,47 @@
+[
+    {
+        "site_name": "ub-city-banglore-store",
+        "cameras": [
+            {
+                "camera_id": "GF-34-CAM-01",
+                "rtsp_url": "rtsp://Bluecloud:User%401964@106.51.89.106:8001/Streaming/Channels/301"
+            }
+        ]
+    },
+    {
+        "site_name": "bellary-store",
+        "cameras": [
+            {
+                "camera_id": "GF-35-CAM-05",
+                "rtsp_url": "rtsp://Bluecloud:User%401964@103.199.209.58:8001/Streaming/Channels/501"
+            }
+        ]
+    },
+    {
+        "site_name": "marathahalli-banglore-store",
+        "cameras": [
+            {
+                "camera_id": "GF-37-CAM-01",
+                "rtsp_url": "rtsp://Bluecloud:User%401964@106.51.66.143:8001/Streaming/Channels/101"
+            }
+        ]
+    },
+    {
+        "site_name": "coimbatore-store",
+        "cameras": [
+            {
+                "camera_id": "GF-40-CAM-01",
+                "rtsp_url": "rtsp://Bluecloud:User%401964@183.82.251.16:8001/Streaming/Channels/101"
+            }
+        ]
+    },
+    {
+        "site_name": "chennai-annanagar-store",
+        "cameras": [
+            {
+                "camera_id": "GF-41-CAM-01",
+                "rtsp_url": "rtsp://Bluecloud:User%401964@49.207.187.203:8001/Streaming/Channels/101"
+            }
+        ]
+    }
+]
