@@ -331,13 +331,20 @@ def save_yolo_annotation(results, txt_file, image, matcher, crop_folder=None, ba
             # If crop is valid, match the clothing. Otherwise, default to 'customers'
             class_id = CLASS_MAPPING.get("customers", 8) if cropped.size == 0 else matcher.match(cropped)
 
-            # Convert pixel coordinates to YOLO format (center x, center y, width, height)
-            # YOLO uses values between 0.0 and 1.0 relative to image size
-            xc = ((x1 + x2) / 2) / img_w
-            yc = ((y1 + y2) / 2) / img_h
-            w  = (x2 - x1) / img_w
-            h  = (y2 - y1) / img_h
-            lines.append(f"{class_id} {xc:.6f} {yc:.6f} {w:.6f} {h:.6f}")
+            # If segmentation masks are available, save polygon coordinates.
+            # Otherwise, fall back to standard bounding box format.
+            if results[0].masks is not None and len(results[0].masks.xyn) > idx:
+                polygon = results[0].masks.xyn[idx]
+                poly_str = " ".join([f"{pt[0]:.6f} {pt[1]:.6f}" for pt in polygon])
+                lines.append(f"{class_id} {poly_str}")
+            else:
+                # Convert pixel coordinates to YOLO format (center x, center y, width, height)
+                # YOLO uses values between 0.0 and 1.0 relative to image size
+                xc = ((x1 + x2) / 2) / img_w
+                yc = ((y1 + y2) / 2) / img_h
+                w  = (x2 - x1) / img_w
+                h  = (y2 - y1) / img_h
+                lines.append(f"{class_id} {xc:.6f} {yc:.6f} {w:.6f} {h:.6f}")
 
             # Draw the green bounding box and section label on the image
             label = ID_TO_CLASS.get(class_id, "unknown")
@@ -351,10 +358,11 @@ def save_yolo_annotation(results, txt_file, image, matcher, crop_folder=None, ba
                 cv2.imwrite(os.path.join(label_crop_folder, f"{idx}_{base_name}"), cropped)
 
     # Write all the label lines to the YOLO .txt file
-    with open(txt_file, "w") as f:
-        f.write("\n".join(lines))
+    if len(lines) > 0:
+        with open(txt_file, "w") as f:
+            f.write("\n".join(lines))
 
-    return annotated_image
+    return annotated_image, len(lines)
 
 
 # ==========================================
@@ -375,7 +383,7 @@ def process_camera(site_name, camera_id, rtsp_url, return_dict):
     # Each camera process loads its own copy of the models
     # This is important for safe parallel processing on macOS
     matcher = ReferenceMatcher()   # Loads reference clothing photos and builds fingerprints
-    model   = YOLO("yolov8s.pt")   # Loads the YOLO person detection model (Small = more accurate)
+    model   = YOLO("yolov8s-seg.pt")   # Loads the YOLO person detection model (Small = more accurate)
 
     # Initialize this camera's stats counter in the shared results dictionary
     return_dict[camera_id] = {"site_name": site_name, "clear": 0, "blur": 0, "annotated": 0, "persons": 0}
@@ -430,29 +438,27 @@ def process_camera(site_name, camera_id, rtsp_url, return_dict):
             return_dict[camera_id] = stats
 
         else:
-            # Frame is clear → save it, detect people, annotate, and crop
-            image_path = f"{image_folder}/{name}"
-            cv2.imwrite(image_path, frame)
-
-            # Run YOLO to find all people in the image
-            # classes=[0] → only look for class 0 (person)
-            # conf=0.25   → detect even people that are partially visible or faraway
-            results = model(image_path, classes=[0], conf=0.5, verbose=False)
+            # Frame is clear → detect people before saving
+            results = model(frame, classes=[0], conf=0.5, verbose=False)
             txt_name = name.replace(".jpg", ".txt")
 
             # Save labels, draw boxes, and save section crops
-            annotated = save_yolo_annotation(results, f"{ann_txt_folder}/{txt_name}", frame, matcher, crop_folder, name)
-            cv2.imwrite(f"{ann_img_folder}/{name}", annotated)
-            status = "CLEAR"
-
-            # Count how many people were found and update the stats
-            person_count = sum(1 for box in results[0].boxes if int(box.cls[0]) == 0)
-            stats = return_dict[camera_id]
-            stats["clear"] += 1
-            if person_count > 0:
-                stats["annotated"] += 1       # Image had at least 1 person → will go to training dataset
-                stats["persons"] += person_count
-            return_dict[camera_id] = stats
+            annotated, num_boxes = save_yolo_annotation(results, f"{ann_txt_folder}/{txt_name}", frame, matcher, crop_folder, name)
+            
+            if num_boxes > 0:
+                # Only save files if there is actually someone in the image
+                image_path = f"{image_folder}/{name}"
+                cv2.imwrite(image_path, frame)
+                cv2.imwrite(f"{ann_img_folder}/{name}", annotated)
+                
+                status = "CLEAR"
+                stats = return_dict[camera_id]
+                stats["clear"] += 1
+                stats["annotated"] += 1
+                stats["persons"] += num_boxes
+                return_dict[camera_id] = stats
+            else:
+                status = "EMPTY"
 
         count += 1
 
