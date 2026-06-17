@@ -1,6 +1,6 @@
-opencv-python
-ultralytics
-numpy
-torch
-torchvision
-Pillow
+opencv-python==4.13.0.92
+ultralytics==8.4.68
+numpy==2.4.6
+torch==2.12.0
+torchvision==0.27.0
+Pillow==12.2.0

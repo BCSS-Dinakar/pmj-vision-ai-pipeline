@@ -18,3 +18,4 @@ venv/
 # Data folders (too large for git)
 dataset/
 training_dataset/
+dataset_3_by_vedic

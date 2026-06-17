@@ -63,9 +63,9 @@ BLUR_THRESHOLD = 150
 MAX_IMAGES = 10
 
 # Maps each section name to a unique number (class ID) for YOLO training
-# NOTE: Number 1 is intentionally skipped. sec1=0, sec2=2, etc.
 CLASS_MAPPING = {
     "sec1": 0,
+    "sec1-sec2-sec3": 1,
     "sec2": 2,
     "sec3": 3,
     "sec4": 4,
@@ -74,7 +74,7 @@ CLASS_MAPPING = {
     "sec7": 7,
     "customers": 8,
     "sec8": 9,
-    "sec9": 10
+    "sec10": 10
 }
 
 
@@ -304,6 +304,23 @@ def save_yolo_annotation(results, txt_file, image, matcher, crop_folder=None, ba
             # Get the pixel coordinates of the bounding box
             x1, y1, x2, y2 = box.xyxy[0].tolist()
 
+            box_width = x2 - x1
+            box_height = y2 - y1
+            box_area = box_width * box_height
+            image_area = img_w * img_h
+
+            # =========================
+            # REMOVE SMALL DETECTIONS
+            # =========================
+
+            # ignore very small boxes
+            if box_height < 80:
+                continue
+
+            # ignore tiny area objects
+            if (box_area / image_area) < 0.01:
+                continue
+
             # Clamp the coordinates so they don't go outside the image edges
             x1_c, y1_c = max(0, int(x1)), max(0, int(y1))
             x2_c, y2_c = min(img_w, int(x2)), min(img_h, int(y2))
@@ -420,7 +437,7 @@ def process_camera(site_name, camera_id, rtsp_url, return_dict):
             # Run YOLO to find all people in the image
             # classes=[0] → only look for class 0 (person)
             # conf=0.25   → detect even people that are partially visible or faraway
-            results = model(image_path, classes=[0], conf=0.25, verbose=False)
+            results = model(image_path, classes=[0], conf=0.5, verbose=False)
             txt_name = name.replace(".jpg", ".txt")
 
             # Save labels, draw boxes, and save section crops
