@@ -1,38 +1,38 @@
 # 🎥 Vision AI Pipeline — Automated Dataset Generator
 
-This tool connects to your security cameras, automatically finds people, figures out which store section they belong to, and builds a ready-to-use AI training dataset — all without any manual work.
+Connects to your RTSP security cameras, detects people using YOLOv8-Seg, matches their section by clothing, and builds a ready-to-use YOLO training dataset — fully automated.
 
 ---
 
 ## 🤔 What Does This Do?
 
-In simple words, here is what happens when you run this script:
-
 ```
-1. Script reads cameras.json         → Loads all your camera links
-2. Connects to all cameras at once   → Runs every camera in parallel
-3. Takes a photo every 2 seconds     → From each camera stream
-4. Quality Check                     → Blurry / dark / overexposed = rejected to blur/ folder
-5. YOLO finds people                 → Draws boxes around every person visible
-6. ResNet checks their clothing      → Compares to your reference_data/ sample photos
-7. Assigns a section label           → sec1, sec2, sec3, ... or customers
-8. Saves annotated image + .txt file → YOLO format label with bounding box coordinates
-9. Builds training_dataset/          → 70% train, 20% val, 10% test — automatically
+1. Read cameras.json          → Loads all camera RTSP links
+2. Connect in parallel        → Each camera runs in its own process
+3. Capture a frame every 2s   → From each RTSP stream
+4. Quality check              → Blurry / dark / overexposed → saved to blur/ (not annotated)
+5. YOLOv8-Seg detects people  → Draws segmentation masks + bounding boxes
+6. Clothing matching          → ResNet18 embedding (60%) + HSV color histogram (40%)
+                                compared against reference_data/ photos
+7. Section label assigned     → sec1, sec2, ..., customers
+8. Save outputs               → YOLO polygon .txt label + annotated image + transparent PNG crop
+9. Build training_dataset/    → 70% train, 20% val, 10% test split — auto generated
 ```
 
 ---
 
 ## ✨ Features
 
-| Feature | What it does |
+| Feature | Detail |
 |---|---|
-| **Multi-Camera** | All cameras run at the same time using Python multiprocessing |
-| **Quality Filter** | Rejects blurry, too dark, or too bright frames automatically. Uses 3 metrics: Sharpness, Brightness, Edge Density |
-| **Person Detection** | Uses `yolov8s.pt` (Small model) with confidence `0.25` for accurate CCTV-grade detection — finds faraway and partially visible people |
-| **Clothing Matcher** | Uses ResNet18 AI to identify which section a person belongs to. Checks color, texture, patterns, logos, and shapes — not just color |
-| **Auto Labeling** | Draws green boxes + section names on every detected person and saves YOLO `.txt` label files |
-| **Dataset Builder** | Packages everything into a YOLO-ready training dataset with auto-generated `data.yaml` |
-| **Reference Guide** | See `reference_data_guide.md` for how to set up your sample clothing photos |
+| **Multi-Camera** | All cameras run simultaneously via Python multiprocessing |
+| **Quality Filter** | Rejects blurry (`BLUR_THRESHOLD`), too dark (< 40), too bright (> 220), or blank frames |
+| **Person Detection** | YOLOv8s-Seg with `conf=0.5` and `retina_masks=True` for high-quality polygon masks |
+| **Clothing Matcher** | ResNet18 (shape/texture) + HSV histogram (color) — threshold `0.75` |
+| **Reference Cache** | Embeddings saved to `reference_cache.pkl` — fast startup on subsequent runs |
+| **RGBA Crops** | Segmented person cutouts saved as transparent PNGs (background fully removed) |
+| **Lazy Folders** | Output folders are only created when actual data needs to be saved |
+| **Auto Dataset** | Packages everything into YOLO-ready `train/val/test` split with `data.yaml` |
 
 ---
 
@@ -41,45 +41,52 @@ In simple words, here is what happens when you run this script:
 ```
 Automation-modeltraining/
 │
-├── main.py              ← Main script. Run this to start everything.
-├── cameras.json         ← List of all your camera RTSP links
-├── requirements.txt     ← Python packages to install
-├── README.md            ← This file — project overview
-├── setup.md             ← Full step-by-step setup guide
-├── reference_data_guide.md ← How to set up your reference clothing photos
-│
-├── reference_data/      ← YOU FILL THIS — sample clothing photos per section
+├── main.py                  ← Main pipeline script
+├── cameras.json             ← RTSP camera links per store
+├── reference_data/          ← Clothing sample photos per section (you provide)
 │   ├── sec1/
 │   ├── sec2/
 │   └── customers/
+├── reference_cache.pkl      ← Auto-generated embedding cache (delete to rebuild)
+├── yolov8s-seg.pt           ← YOLOv8 segmentation model weights
+├── requirements.txt
+├── README.md
+├── setup.md
+├── reference_data_guide.md
 │
-├── dataset/             ← AUTO CREATED — raw camera output organized by date
-│   └── 2026-06-16/
+├── dataset/                 ← AUTO CREATED — raw daily output per store
+│   └── YYYY-MM-DD/
 │       └── store-name/
-│           ├── images/          ← Good quality frames
-│           ├── blur/            ← Rejected blurry frames
+│           ├── images/              ← Good frames (person detected)
+│           ├── blur/                ← Rejected low-quality frames
 │           ├── annotations/
-│           │   ├── images/      ← Frames with boxes drawn on them
-│           │   └── txt/         ← YOLO .txt label files
-│           └── crops/           ← Cropped person photos by section
+│           │   ├── images/          ← Annotated frames with drawn boxes
+│           │   └── txt/             ← YOLO polygon label files
+│           ├── crops/               ← Regular JPG crops per section
+│           └── segmented_crops/     ← Transparent PNG crops per section
 │
-└── training_dataset/    ← AUTO CREATED — final clean dataset for training
-    ├── data.yaml         ← YOLO config (class names + paths)
-    ├── images/
-    │   ├── train/        ← 70% of data
-    │   ├── val/          ← 20% of data
-    │   └── test/         ← 10% of data
-    └── labels/
-        ├── train/
-        ├── val/
-        └── test/
+├── training_dataset/        ← AUTO CREATED — final YOLO-ready dataset
+│   ├── data.yaml
+│   ├── images/
+│   │   ├── train/           ← 70%
+│   │   ├── val/             ← 20%
+│   │   └── test/            ← 10%
+│   └── labels/
+│       ├── train/
+│       ├── val/
+│       └── test/
+│
+└── dataset_3_by_vedic/      ← Standalone tools for reference dataset preparation
+    ├── crop_images.py       ← Step 1: Extract crops from annotated images
+    ├── clean_dataset.py     ← Step 2: Quality filter + diversity selection
+    └── segment_dataset.py   ← Step 3: YOLO segmentation → transparent RGBA PNGs
 ```
 
 ---
 
 ## ⚙️ Quick Setup
 
-**Step 1 — Create a virtual environment:**
+**Step 1 — Virtual environment:**
 ```bash
 python3 -m venv env
 source env/bin/activate
@@ -90,54 +97,71 @@ source env/bin/activate
 pip3 install -r requirements.txt
 ```
 
-**Step 3 — Add your reference photos:**
-Put **5–10 clear clothing photos** for each section inside `reference_data/`:
+**Step 3 — Add reference photos:**
+Put **5–10 clear clothing photos** per section into `reference_data/`:
 ```
 reference_data/sec1/photo1.jpg
 reference_data/sec2/photo1.jpg
 reference_data/customers/photo1.jpg
 ```
-> 📖 See [reference_data_guide.md](./reference_data_guide.md) for full photo guidelines.
+> 📖 See [reference_data_guide.md](./reference_data_guide.md) for photo guidelines.
+
+**Step 4 — Add your cameras:**
+Edit `cameras.json` with your RTSP links.
+
+**Step 5 — Run:**
+```bash
+python3 main.py
+```
 
 ---
 
-## 🔧 Settings (in `main.py`)
-
-You can change these at the top of `main.py` under `# CONFIGURATION`:
+## 🔧 Settings (top of `main.py`)
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `MAX_IMAGES` | `10` | Photos to collect per camera |
-| `FRAME_INTERVAL` | `2` | Seconds between each photo |
-| `BLUR_THRESHOLD` | `150` | Sharpness limit (lower = stricter) |
+| `MAX_IMAGES` | `20` | Frames to process per camera |
+| `FRAME_INTERVAL` | `2` | Seconds between each captured frame |
+| `BLUR_THRESHOLD` | `60` | Laplacian variance below this = rejected as blurry |
+
+Matcher settings (in `ReferenceMatcher.__init__`):
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `threshold` | `0.75` | Minimum combined score to accept a section match |
 
 ---
 
-## 📊 Console Output Guide
-
-When running, the terminal will print one line per frame:
+## 📊 Console Output
 
 ```
   📷  CAMERA CONNECTED  |  GF-37-CAM-01  — Starting capture...
-  ✅  CLEAR  |  GF-37-CAM-01  [ 1/10]  |  Sharpness: 9800.1  Brightness: 94.2  Detail: 55.1
-  🚫  BLUR   |  GF-37-CAM-01  [ 2/10]  |  Sharpness:   45.2  Brightness:128.0  Detail:  0.4
-  ❌  CAMERA OFFLINE  |  GF-35-CAM-05  — Cannot connect. Check RTSP link or network.
+  ✅  CLEAR  |  GF-37-CAM-01  [ 1/20]  |  Sharpness: 9800.1  Brightness: 94.2  Detail: 55.1
+  Matched: sec2  Score: 0.812
+  🚫  BLUR   |  GF-37-CAM-01  [ 2/20]  |  Sharpness:   45.2  Brightness:128.0  Detail:  0.4
+  🚫  EMPTY  |  GF-37-CAM-01  [ 3/20]  |  Sharpness: 8200.0  Brightness: 90.0  Detail: 48.0
+  ❌  CAMERA OFFLINE  |  GF-35-CAM-05  — Cannot connect.
   🏁  ALL CAMERAS FINISHED — MAX_IMAGES reached for every camera.
 ```
 
-**Score meaning:**
-- `Sharpness` → How sharp the image is (higher = sharper, below 60 = rejected)
-- `Brightness` → Light level (normal range: 40–220, outside = rejected)
-- `Detail` → How much detail/edges visible (below 5 = rejected as blank frame)
+**Status icons:**
+- `✅ CLEAR` — Good frame with at least one person detected and saved
+- `🚫 BLUR`  — Frame failed quality check (saved to blur/ for review)
+- `🚫 EMPTY` — Good frame but no person detected (nothing saved)
+- `❌`       — Camera offline or unreachable
+
+**Score columns:**
+- `Sharpness` — Laplacian variance (rejected if < `BLUR_THRESHOLD`)
+- `Brightness` — Mean pixel brightness (rejected if < 40 or > 220)
+- `Detail`     — Canny edge density (rejected if < 5 — blank frame)
 
 ---
 
 ## 🚀 Train Your Model
 
-After running the script, your `training_dataset/` is ready. Train a new YOLO model with:
-
+After running, `training_dataset/` is ready. Train with:
 ```bash
-yolo train model=yolov8s.pt data=training_dataset/data.yaml epochs=50 imgsz=640
+yolo train model=yolov8s-seg.pt data=training_dataset/data.yaml epochs=50 imgsz=640
 ```
 
 ---
@@ -146,8 +170,9 @@ yolo train model=yolov8s.pt data=training_dataset/data.yaml epochs=50 imgsz=640
 
 | Problem | Fix |
 |---|---|
-| `❌ CAMERA OFFLINE` | Camera offline or wrong RTSP link in `cameras.json` |
-| All frames are `🚫 BLUR` | Camera stream is initializing. Wait and try again. |
+| `❌ CAMERA OFFLINE` | Wrong RTSP link or camera is off |
+| All frames `🚫 BLUR` | Camera stream is initializing — wait and retry |
 | `0 Labeled images` | No people visible, or `reference_data/` is empty |
-| `ModuleNotFoundError` | Run `pip3 install -r requirements.txt` in the `env` |
-| `⚠️ No annotated images found` | Cameras ran but detected no people. Check camera angle. |
+| Everything labeled `customers` | Raise `threshold` or add more reference photos |
+| `ModuleNotFoundError` | Run `pip3 install -r requirements.txt` in env |
+| Wrong section predictions | Delete `reference_cache.pkl` and re-run to rebuild embeddings |
