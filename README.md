@@ -67,14 +67,15 @@ Automation-modeltraining/
 │
 ├── training_dataset/        ← AUTO CREATED — final YOLO-ready dataset
 │   ├── data.yaml
-│   ├── images/
-│   │   ├── train/           ← 70%
-│   │   ├── val/             ← 20%
-│   │   └── test/            ← 10%
-│   └── labels/
-│       ├── train/
-│       ├── val/
-│       └── test/
+│   ├── train/               ← 70% of data
+│   │   ├── images/
+│   │   └── labels/
+│   ├── val/                 ← 20% of data
+│   │   ├── images/
+│   │   └── labels/
+│   └── test/                ← 10% of data
+│       ├── images/
+│       └── labels/
 │
 └── dataset_3_by_vedic/      ← Standalone tools for reference dataset preparation
     ├── crop_images.py       ← Step 1: Extract crops from annotated images
@@ -161,7 +162,7 @@ Matcher settings (in `ReferenceMatcher.__init__`):
 
 After running, `training_dataset/` is ready. Train with:
 ```bash
-yolo train model=yolov8s-seg.pt data=training_dataset/data.yaml epochs=50 imgsz=640
+yolo train model=yolov8s.pt data=training_dataset/data.yaml epochs=50 imgsz=640
 ```
 
 ---

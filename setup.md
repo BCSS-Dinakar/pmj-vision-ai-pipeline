@@ -66,14 +66,15 @@ Automation-modeltraining/
 │
 └── training_dataset/        ← AUTO CREATED — final YOLO-ready dataset
     ├── data.yaml             ← Class names + split paths (auto-generated)
-    ├── images/
-    │   ├── train/            ← 70% of data
-    │   ├── val/              ← 20% of data
-    │   └── test/             ← 10% of data
-    └── labels/
-        ├── train/
-        ├── val/
-        └── test/
+    ├── train/                ← 70% of data for training
+    │   ├── images/
+    │   └── labels/
+    ├── val/                  ← 20% of data for checking accuracy
+    │   ├── images/
+    │   └── labels/
+    └── test/                 ← 10% of data for final testing
+        ├── images/
+        └── labels/
 ```
 
 ---

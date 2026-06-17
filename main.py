@@ -547,8 +547,8 @@ def create_training_dataset(source_dir="dataset", dest_dir="training_dataset", s
     print(f"{'='*55}")
 
     for split in ['train', 'val', 'test']:
-        create_folder(f"{dest_dir}/images/{split}")
-        create_folder(f"{dest_dir}/labels/{split}")
+        create_folder(f"{dest_dir}/{split}/images")
+        create_folder(f"{dest_dir}/{split}/labels")
 
     if not os.path.exists(source_dir):
         print(f"  ⚠️  ERROR: Source folder '{source_dir}' not found.")
@@ -597,15 +597,15 @@ def create_training_dataset(source_dir="dataset", dest_dir="training_dataset", s
 
     def copy_split(data, split_name):
         for img_path, txt_path, img_name, txt_name in data:
-            shutil.copy(img_path, os.path.join(dest_dir, "images", split_name, img_name))
-            shutil.copy(txt_path, os.path.join(dest_dir, "labels", split_name, txt_name))
+            shutil.copy(img_path, os.path.join(dest_dir, split_name, "images", img_name))
+            shutil.copy(txt_path, os.path.join(dest_dir, split_name, "labels", txt_name))
 
     copy_split(all_images[:train_end],        'train')
     copy_split(all_images[train_end:val_end], 'val')
     copy_split(all_images[val_end:],          'test')
 
     names_yaml   = "\n".join([f"  {class_id}: {name}" for name, class_id in CLASS_MAPPING.items()])
-    yaml_content = f"train: images/train\nval: images/val\ntest: images/test\n\nnames:\n{names_yaml}\n"
+    yaml_content = f"train: train/images\nval: val/images\ntest: test/images\n\nnames:\n{names_yaml}\n"
 
     with open(os.path.join(dest_dir, "data.yaml"), "w") as f:
         f.write(yaml_content)
